@@ -7,7 +7,9 @@ import { createSession, verifyPassword } from '@/app/auth';
 const schema = z.object({ email: z.string().trim().toLowerCase().email().max(254), password: z.string().min(1).max(128) });
 
 export async function POST(request: Request) {
-  if (request.headers.get('origin') !== new URL(request.url).origin) return Response.json({ error: 'Request origin rejected.' }, { status: 403 });
+  const origin = request.headers.get('origin');
+  const host = request.headers.get('host');
+  if (!origin || !host || new URL(origin).host !== host) return Response.json({ error: 'Request origin rejected.' }, { status: 403 });
   try {
     const input = schema.parse(await request.json());
     const user = (await getDb().select().from(users).where(eq(users.email, input.email)).limit(1))[0];
