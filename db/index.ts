@@ -1,13 +1,15 @@
-import { env } from "cloudflare:workers";
-import { drizzle } from "drizzle-orm/d1";
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from "./schema";
 
-export function getDb() {
-  if (!env.DB) {
-    throw new Error(
-      "Cloudflare D1 binding `DB` is unavailable. Create the database and update wrangler.jsonc before starting Toveli."
-    );
-  }
+type Database = ReturnType<typeof drizzle<typeof schema>>;
+let database: Database | undefined;
 
-  return drizzle(env.DB, { schema });
+export function getDb() {
+  if (database) return database;
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error('DATABASE_URL is required.');
+  const client = postgres(url, { max: 10, prepare: false });
+  database = drizzle(client, { schema });
+  return database;
 }

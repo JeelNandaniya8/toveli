@@ -59,7 +59,7 @@ After a plan, privately ask whether it happened, whether the user felt comfortab
 
 ## 5. What this alpha actually implements
 
-The alpha uses React/Vinext on Cloudflare Workers and D1 for account-scoped state. This is an explicit first-stage hosting choice. It does not pretend to deploy FastAPI or PostgreSQL on the same runtime.
+The alpha uses Next.js on a standard Node.js runtime and PostgreSQL for account-scoped state. Render can host both through the repository Blueprint. The tested Python matching primitives remain a future service boundary rather than a falsely deployed microservice.
 
 | Surface | Implemented behavior | Deliberate boundary |
 |---|---|---|

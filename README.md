@@ -12,26 +12,26 @@ The alpha also contains a real member foundation: discoverable profiles, same-hu
 
 ## Setup
 
-Requirements: Node.js 22+, npm, a Cloudflare account, Wrangler, and a D1 database.
+Requirements: Node.js 22+, npm, and PostgreSQL. The included `render.yaml` creates the Render web service and PostgreSQL database together.
 
 ```sh
 npm ci
-npx wrangler login
-npx wrangler d1 create toveli-db
-```
-
-Copy the returned database ID into `wrangler.jsonc`, then run:
-
-```sh
-npm run db:migrate:local
+cp .env.example .env.local
+npm run db:migrate
 npm run dev
 ```
 
-Before deploying, apply migrations to the production database and deploy:
+Replace `DATABASE_URL` in `.env.local` with your local PostgreSQL connection string.
+
+## Deploy on Render
+
+Use **New → Blueprint** in Render and select this repository. Render reads `render.yaml`, creates `toveli-db`, injects its internal `DATABASE_URL`, applies the migrations, builds Next.js, and starts the Node web service.
+
+If you create the Render web service manually, use:
 
 ```sh
-npm run db:migrate:remote
-npm run deploy
+Build command: npm ci && npm run db:migrate && npm run build
+Start command: npm start
 ```
 
 Authentication is owned by Toveli. Passwords use salted PBKDF2-SHA256 hashes and browser sessions use random tokens stored only as SHA-256 hashes in D1. Session cookies are HttpOnly, SameSite=Lax, and Secure in production. Add email verification, password reset, breached-password screening, abuse controls, and production monitoring before inviting public users.

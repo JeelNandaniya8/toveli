@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: toveli
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && npm run db:migrate && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: toveli-db
+          property: connectionString
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+
+databases:
+  - name: toveli-db
+    plan: free
+    region: singapore
+    databaseName: toveli
+    user: toveli
+    postgresMajorVersion: "18"
