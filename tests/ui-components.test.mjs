@@ -18,7 +18,7 @@ async function readCssTree(directory) {
 
 test('production CSS keeps the finite-feed and reduced-motion contracts', async () => {
   const css = await readCssTree(path.join(root, '.next', 'static'));
-  assert.match(css, /v3-end/);
+  assert.match(css, /tv-feed-end/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /scrollbar-width:\s*none/);
 });

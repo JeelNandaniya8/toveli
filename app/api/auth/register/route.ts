@@ -1,3 +1,4 @@
+import { sameOrigin } from '@/lib/http';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
@@ -11,9 +12,7 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-  if (!origin || !host || new URL(origin).host !== host) return Response.json({ error: 'Request origin rejected.' }, { status: 403 });
+  if (!sameOrigin(request)) return Response.json({ error: 'Request origin rejected.' }, { status: 403 });
   try {
     const input = schema.parse(await request.json());
     const db = getDb();

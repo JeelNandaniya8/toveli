@@ -1,3 +1,4 @@
+import { sameOrigin } from '@/lib/http';
 import { getCurrentUser } from '../../auth';
 import {getDb} from '@/db';
 import {records} from '@/db/schema';
@@ -20,7 +21,7 @@ z.object({kind:z.literal('delete'),id:z.string().regex(/^(post|plan):[a-f0-9-]+$
 async function snapshot(owner:string){const rows=await getDb().select().from(records).where(eq(records.owner,owner));const data=Object.fromEntries(rows.map(r=>[r.key,JSON.parse(r.value)]));const profile=data.profile||defaultProfile;const blocked=rows.filter(r=>r.key.startsWith('block:')).map(r=>r.key.slice(6));return {data,profile,matches:rankPeople(profile,blocked)};}
 const json=(v:unknown,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
 export async function GET(){const u=await getCurrentUser();if(!u)return json({error:'Sign in to open your private alpha.'},401);try{return json(await snapshot(u.email));}catch{return json({error:'Your workspace could not load. Please retry.'},503);}}
-export async function POST(request:Request){const u=await getCurrentUser();if(!u)return json({error:'Sign in first.'},401);if(request.headers.get('origin')!==new URL(request.url).origin)return json({error:'Request origin rejected.'},403);try{
+export async function POST(request:Request){const u=await getCurrentUser();if(!u)return json({error:'Sign in first.'},401);if(!sameOrigin(request))return json({error:'Request origin rejected.'},403);try{
 if(Number(request.headers.get('content-length')||0)>10000)return json({error:'Request too large.'},413);
 const raw=await request.text();if(raw.length>10000)return json({error:'Request too large.'},413);const a=actionSchema.parse(JSON.parse(raw));const db=getDb();let key='',value:unknown=a;
 if(a.kind==='profile'){key='profile';value=a.data;}

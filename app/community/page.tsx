@@ -1,2 +1,2 @@
-import CommunityClient from './CommunityClient';
-export default function CommunityPage(){ return <CommunityClient/>; }
+import { redirect } from 'next/navigation';
+export default function CommunityPage() { redirect('/radar'); }
