@@ -1,4 +1,4 @@
-import { bigint, boolean, index, integer, pgTable, primaryKey, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: varchar('id', { length: 36 }).primaryKey(),
@@ -66,4 +66,33 @@ export const communityMessages = pgTable('community_messages', {
   receiver: varchar('receiver', { length: 254 }).notNull().references(() => communityProfiles.owner, { onDelete: 'cascade' }),
   body: text('body').notNull(),
   createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+});
+
+// V4 social objects are additive. Existing users and private drafts are preserved.
+export const socialItems = pgTable('social_items', {
+  id: uuid('id').primaryKey(), owner: varchar('owner', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 12, enum: ['post', 'circle', 'plan'] }).notNull(),
+  hub: varchar('hub', { length: 120 }).notNull(), cohort: varchar('cohort', { length: 10 }).notNull(),
+  data: jsonb('data').notNull(), createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+}, t => [index('social_items_scope_created_idx').on(t.hub, t.cohort, t.createdAt)]);
+export const socialReactions = pgTable('social_reactions', {
+  itemId: uuid('item_id').notNull().references(() => socialItems.id, { onDelete: 'cascade' }),
+  actor: varchar('actor', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 10 }).notNull(), createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+}, t => [primaryKey({ columns: [t.itemId, t.actor, t.kind] }), index('social_reactions_actor_idx').on(t.actor)]);
+export const socialComments = pgTable('social_comments', {
+  id: uuid('id').primaryKey(), itemId: uuid('item_id').notNull().references(() => socialItems.id, { onDelete: 'cascade' }),
+  actor: varchar('actor', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  body: varchar('body', { length: 500 }).notNull(), createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+}, t => [index('social_comments_item_idx').on(t.itemId, t.createdAt)]);
+export const socialNotifications = pgTable('social_notifications', {
+  id: uuid('id').primaryKey(), recipient: varchar('recipient', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  actor: varchar('actor', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  text: varchar('text', { length: 240 }).notNull(), target: varchar('target', { length: 100 }).notNull(),
+  read: boolean('read').notNull().default(false), createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+}, t => [index('social_notifications_recipient_idx').on(t.recipient, t.createdAt)]);
+export const socialReports = pgTable('social_reports', {
+  id: uuid('id').primaryKey(), itemId: uuid('item_id').notNull(),
+  actor: varchar('actor', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  reason: varchar('reason', { length: 500 }).notNull(), createdAt: bigint('created_at', { mode: 'number' }).notNull(),
 });

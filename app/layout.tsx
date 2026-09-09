@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./v3.css";
+import "@fontsource-variable/dm-sans";
+import "@fontsource-variable/manrope";
+import "./social.css";
 
 export const metadata: Metadata = {
   title: "Toveli | Find your people",

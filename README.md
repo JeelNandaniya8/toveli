@@ -1,54 +1,85 @@
 # Toveli
 
-A standalone working alpha for a social home built around shared interests, small circles, real plans, mutual connections, and a finite feed.
+A campus social app for shared interests, small circles, and real plans. This V4 release replaces the old demonstration screens with connected social features and a complete visual redesign.
 
-The detailed V3 product strategy is in [docs/PRODUCT_STRATEGY_V3.md](docs/PRODUCT_STRATEGY_V3.md). The technical blueprint remains in [docs/PRODUCT_BLUEPRINT.md](docs/PRODUCT_BLUEPRINT.md).
+Built with **Next.js 16, React 19, TypeScript, and PostgreSQL**. It runs as an ordinary Node service on Render. All fonts and cover images ship with the source. There is no external identity-provider requirement.
 
-## Implemented
+## What works
 
-React/Vinext multi-route app with a redesigned mobile-first Today experience, D1 persistence, independent email/password accounts, expiring pulses, interest onboarding, explainable server-ranked sample profiles, a finite mixed feed, private text posts, likes/saves, circle preferences, introduction drafts, plan drafts, profile controls, and privacy settings. The short-content preview uses atomic five-second server reservations with a 20-minute UTC daily cap.
+- Email/password registration and sign-in with Toveli-owned sessions.
+- Interest onboarding and profile editing. People discover each other within the same chosen hub and age group.
+- Shared text and photo posts, likes, private bookmarks, comments, and authenticated share links.
+- User-created circles, membership, and circle conversations.
+- User-created public-place plans, capacity-limited RSVPs, upcoming/past filters, and calendar downloads. Hosts can cancel plans; participants receive a notification.
+- Mutual connection requests, accept/decline/cancel actions, and persistent messages after acceptance. Conversation starters use selected interests.
+- Notifications, search and filters, profile activity, basic current-data export, blocking, and private reporting.
+- A finite feed, desktop sidebar, mobile navigation, native modal focus handling, accessible control labels, and reduced-motion support.
+- `/demo`: an explicitly labelled, browser-session sandbox with sample people. It works without a database. The live app starts with real empty states; it never fills a failed database request with fake users.
 
-The alpha also contains a real member foundation: discoverable profiles, same-hub and same-cohort visibility, mutual connection requests, accepted-contact messaging, bidirectional discovery blocks, and server rate limits. Sample discovery content remains clearly labelled. No AI responses, payments, uploaded media, campus verification, or public launch are implemented. The text-based short preview is not production video delivery. Saathi is a separate project and has not been modified.
+The implementation and its limits are described in [docs/V4_RELEASE.md](docs/V4_RELEASE.md). Older blueprint documents contain proposed features; they are not a list of features implemented in this release.
 
-## Setup
+## Try the interface first
 
-Requirements: Node.js 22+, npm, and PostgreSQL. The included `render.yaml` creates the Render web service and PostgreSQL database together.
+Use Node.js 22.13 or newer.
+
+```sh
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000/demo`. The demo supports creating posts, replying, saving, joining, accepting a sample request, and sending a local test message. Sample members never generate pretend live replies.
+
+## Run with real accounts
+
+Create a PostgreSQL database. In the project folder:
 
 ```sh
 npm ci
 cp .env.example .env.local
+```
+
+Set `DATABASE_URL` in `.env.local` to your database connection string, then run:
+
+```sh
 npm run db:migrate
 npm run dev
 ```
 
-Replace `DATABASE_URL` in `.env.local` with your local PostgreSQL connection string.
+Open `http://localhost:3000`, create an account, and complete your profile. To test real interaction, create two test accounts in separate browser sessions with the same campus and age group. A third account in another age group should not see their content.
 
-## Deploy on Render
+## Update your existing Render project
 
-Use **New → Blueprint** in Render and select this repository. Render reads `render.yaml`, creates `toveli-db`, injects its internal `DATABASE_URL`, applies the migrations, builds Next.js, and starts the Node web service.
+The source download includes complete code. Use [START_HERE.md](START_HERE.md) for replacement and Git patch instructions.
 
-If you create the Render web service manually, use:
+Existing users, password hashes, sessions, community profiles, connections, and messages retain their original tables. Migration `0001_round_warhawk.sql` adds social tables. **Keep migration 0000 and the migration journal.** Old private V3 drafts are not silently published to the new campus feed.
 
-```sh
+Use these commands in your existing Render web service:
+
+```text
 Build command: npm ci && npm run db:migrate && npm run build
 Start command: npm start
 ```
 
-Authentication is owned by Toveli. Passwords use salted PBKDF2-SHA256 hashes and browser sessions use random tokens stored only as SHA-256 hashes in D1. Session cookies are HttpOnly, SameSite=Lax, and Secure in production. Add email verification, password reset, breached-password screening, abuse controls, and production monitoring before inviting public users.
+Required environment: `DATABASE_URL`. The service binds to Render's `PORT`. For a custom domain, set `APP_ORIGIN` to that exact public origin, including `https://`. Otherwise the shared origin check uses Render's `RENDER_EXTERNAL_URL` automatically. This preserves the reverse-proxy login fix and applies it consistently to all mutation endpoints.
 
-## Verification
+The included `render.yaml` is also available for a new installation. Plan availability and pricing are controlled by Render. This source release does not deploy your site.
+
+## Verify
 
 ```sh
-npx tsc --noEmit
-python -m unittest discover -s tests -p 'test_*.py'
-node --experimental-strip-types --test tests/model.test.mjs
-npm run build
+npm test
+npm run lint
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-`services/matching/engine.py` contains tested pure-Python primitives for the future FastAPI/pgvector service. It is not called by the deployed alpha.
+`npm test` builds the production app and runs Node tests, real PostgreSQL-engine integration tests through PGlite, and React interaction tests in JSDOM. The tests require no external database or credentials. PGlite checks the actual migrations and SQL; it does not test distributed production concurrency or Render infrastructure.
 
-## Source and operations
+## Deliberate boundaries
 
-This repository is independent from Saathi and from any development or preview platform. Before a public beta, complete the age-assurance, authorization, moderation, reporting, content safety, media protection and privacy gates documented in the blueprint.
+This is a working campus MVP. It is not a claim of production readiness at Instagram scale.
 
-Sample campus photograph: Kaden Taylor on Unsplash, https://unsplash.com/photos/campus-buildings-surrounded-by-trees-at-sunset-xjmmQ06Iprw. Image is an illustrative scene, not an assertion about Silver Oak or Nirma.
+There are no paid features, voucher payouts, public video publishing, push notifications, live collaborative canvas, or deployed behavioral AI service. The existing short-consumption reservation endpoint and Python matching primitives are retained as foundations; the new interface does not pretend they are a finished video or AI product. Messaging refreshes on a 20-second visible-tab interval, rather than through WebSockets.
+
+Production preparation still includes account recovery, email verification, login abuse protection, stronger age/campus assurance, moderation operations, backup/restore verification, media storage improvements, and a real-device visual check. These are tracked in [docs/V4_RELEASE.md](docs/V4_RELEASE.md).
+
+Image sources and third-party assets are documented in [docs/ASSETS.md](docs/ASSETS.md).
