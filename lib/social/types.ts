@@ -1,6 +1,7 @@
+export type ProfilePlace = { kind: 'area' | 'society' | 'college' | 'workplace'; name: string; city: string; match: boolean };
 export type Member = {
   id: string; name: string; hub: string; cohort: 'teen' | 'adult'; bio: string;
-  interests: string[]; intent: string; introvert: boolean; discoverable: boolean;
+  places?: ProfilePlace[]; interests: string[]; intent: string; introvert: boolean; discoverable: boolean;
 };
 export type ItemKind = 'post' | 'circle' | 'plan';
 export type ItemData = {
@@ -18,7 +19,7 @@ export type ChatMessage = { id: string; personId: string; fromMe: boolean; body:
 export type Activity = { id: string; text: string; target: string; read: boolean; createdAt: number };
 export type SocialSnapshot = {
   now: number; me: Member | null; account: { name: string }; people: Member[]; items: SocialItem[];
-  requests: Connection[]; contacts: Member[]; messages: ChatMessage[]; notifications: Activity[];
+  following?: string[]; followers?: string[]; requests: Connection[]; contacts: Member[]; messages: ChatMessage[]; notifications: Activity[];
 };
 export type View = 'feed' | 'radar' | 'circles' | 'plans' | 'chat' | 'profile' | 'onboard' | 'settings' | 'saved' | 'notifications';
 export type SocialAction = Record<string, unknown> & { kind: string };

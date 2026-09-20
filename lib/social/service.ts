@@ -1,11 +1,12 @@
+import { canDiscover, sharedPlaces, rankScore } from './matching.ts';
 import { actionInput } from './validation.ts';
-import type { ItemData, Member, SocialSnapshot } from './types.ts';
+import type { ItemData, Member, ProfilePlace, SocialSnapshot } from './types.ts';
 
 export type Row = Record<string, unknown>;
 export interface Queryable { query<T extends Row = Row>(text: string, params?: unknown[]): Promise<{ rows: T[] }> }
 export interface Database extends Queryable { transaction<T>(run: (tx: Queryable) => Promise<T>): Promise<T> }
 export type Actor = { id: string; email: string; displayName: string };
-type ProfileRow = Row & { owner: string; account_id: string; public_id: string; display_name: string; hub: string; cohort: 'teen' | 'adult'; bio: string; interests: string; intent: string; introvert: boolean; discoverable: boolean };
+type ProfileRow = Row & { places: ProfilePlace[]; owner: string; account_id: string; public_id: string; display_name: string; hub: string; cohort: 'teen' | 'adult'; bio: string; interests: string; intent: string; introvert: boolean; discoverable: boolean };
 type ItemRow = Row & { id: string; owner: string; kind: 'post' | 'circle' | 'plan'; data: ItemData; created_at: string | number; hub: string; cohort: string; has_photo?: boolean };
 
 export class SocialError extends Error {
@@ -13,9 +14,9 @@ export class SocialError extends Error {
   constructor(message: string, status = 400) { super(message); this.status = status; }
 }
 const profileSelect = 'SELECT p.*, u.id AS account_id FROM community_profiles p JOIN users u ON u.email=p.owner';
-function member(p: ProfileRow): Member {
+function member(p: ProfileRow, viewer?: ProfileRow): Member {
   return { id: p.public_id, name: p.display_name, hub: p.hub, cohort: p.cohort, bio: p.bio,
-    interests: JSON.parse(p.interests), intent: p.intent, introvert: p.introvert, discoverable: p.discoverable };
+    places: !viewer || viewer.owner === p.owner ? p.places : sharedPlaces(viewer, p), interests: JSON.parse(p.interests), intent: p.intent, introvert: p.introvert, discoverable: p.discoverable };
 }
 async function first<T extends Row>(db: Queryable, text: string, params: unknown[] = []) { return (await db.query<T>(text, params)).rows[0]; }
 async function blocked(db: Queryable, a: string, b: string) {
@@ -26,7 +27,7 @@ async function myProfile(db: Queryable, user: Actor) {
 }
 async function targetProfile(db: Queryable, me: ProfileRow, id: string) {
   const target = await first<ProfileRow>(db, `${profileSelect} WHERE p.public_id=$1`, [id]);
-  if (!target || target.owner === me.owner || target.hub !== me.hub || target.cohort !== me.cohort || await blocked(db, me.owner, target.owner)) throw new SocialError('This member is unavailable.', 404);
+  if (!target || target.owner === me.owner || !canDiscover(member(me), member(target)) || await blocked(db, me.owner, target.owner)) throw new SocialError('This member is unavailable.', 404);
   return target;
 }
 async function allowedItem(db: Queryable, me: ProfileRow, id: string, lock = false) {
@@ -54,17 +55,17 @@ async function limit(db: Queryable, user: Actor, now: number) {
 export function createSocialService(db: Database, clock = Date.now) {
   async function snapshot(user: Actor): Promise<SocialSnapshot> {
     const me = await myProfile(db, user);
-    const result: SocialSnapshot = { now: clock(), me: me ? member(me) : null, account: { name: user.displayName }, people: [], items: [], requests: [], contacts: [], messages: [], notifications: [] };
+    const result: SocialSnapshot = { now: clock(), me: me ? member(me) : null, account: { name: user.displayName }, people: [], following: [], followers: [], items: [], requests: [], contacts: [], messages: [], notifications: [] };
     if (!me) return result;
-    const profiles = (await db.query<ProfileRow>(`${profileSelect} WHERE p.hub=$2 AND p.cohort=$3 AND NOT EXISTS
+    const profiles = (await db.query<ProfileRow>(`${profileSelect} WHERE p.cohort=$2 AND NOT EXISTS
       (SELECT 1 FROM community_blocks b WHERE (b.actor=$1 AND b.target=p.owner) OR (b.target=$1 AND b.actor=p.owner))
-      ORDER BY p.updated_at DESC LIMIT 1000`, [user.email, me.hub, me.cohort])).rows;
+      ORDER BY p.updated_at DESC LIMIT 1000`, [user.email, me.cohort])).rows.filter(p => canDiscover(member(me), member(p)));
     const byAccount = new Map(profiles.map(p => [p.account_id, p]));
     const byEmail = new Map(profiles.map(p => [p.owner, p]));
-    result.people = profiles.filter(p => p.account_id !== user.id && p.discoverable).map(member).sort((a, b) => {
-      const overlap = (p: Member) => p.interests.filter(t => result.me!.interests.includes(t)).length + (p.intent === me.intent ? 1 : 0);
-      return overlap(b) - overlap(a);
-    });
+    result.people = profiles.filter(p => p.account_id !== user.id && p.discoverable).map(p => member(p, me)).sort((a,b) => rankScore(result.me!,b)-rankScore(result.me!,a));
+    const follows = (await db.query<{ actor: string; target: string }>('SELECT actor,target FROM social_follows WHERE actor=$1 OR target=$1', [user.email])).rows;
+    result.following = follows.filter(f => f.actor === user.email && byEmail.has(f.target)).map(f => byEmail.get(f.target)!.public_id);
+    result.followers = follows.filter(f => f.target === user.email && byEmail.has(f.actor)).map(f => byEmail.get(f.actor)!.public_id);
     const items = (await db.query<ItemRow>(`SELECT i.id,i.owner,i.kind,i.hub,i.cohort,i.data-'photo' AS data,i.data ? 'photo' AS has_photo,i.created_at
       FROM social_items i JOIN users u ON u.id=i.owner JOIN community_profiles p ON p.owner=u.email
       WHERE i.hub=$2 AND i.cohort=$3 AND p.hub=$2 AND p.cohort=$3 AND NOT EXISTS
@@ -78,14 +79,14 @@ export function createSocialService(db: Database, clock = Date.now) {
         const reactionsForItem = reactions.filter(r => r.item_id === i.id);
         const has = (kind: string) => reactionsForItem.some(r => r.actor === user.id && r.kind === kind);
         return { ...i.data, cover: i.has_photo ? `/api/social/media/${i.id}` : i.data.cover,
-          id: i.id, kind: i.kind, author: member(byAccount.get(i.owner)!), createdAt: Number(i.created_at), mine: i.owner === user.id,
+          id: i.id, kind: i.kind, author: member(byAccount.get(i.owner)!, me), createdAt: Number(i.created_at), mine: i.owner === user.id,
           liked: has('like'), saved: has('save'), joined: has('join'), likes: reactionsForItem.filter(r => r.kind === 'like').length,
           members: reactionsForItem.filter(r => r.kind === 'join').length,
-          comments: comments.filter(c => c.item_id === i.id && byAccount.has(c.actor)).reverse().map(c => ({ id: c.id, body: c.body, createdAt: Number(c.created_at), author: member(byAccount.get(c.actor)!) })) };
+          comments: comments.filter(c => c.item_id === i.id && byAccount.has(c.actor)).reverse().map(c => ({ id: c.id, body: c.body, createdAt: Number(c.created_at), author: member(byAccount.get(c.actor)!, me) })) };
       });
     }
     const requests = (await db.query<{ id: string; sender: string; receiver: string; state: string }>('SELECT id,sender,receiver,state FROM connection_requests WHERE sender=$1 OR receiver=$1 ORDER BY updated_at DESC LIMIT 200', [user.email])).rows;
-    result.requests = requests.filter(r => byEmail.has(r.sender === user.email ? r.receiver : r.sender)).map(r => ({ id: r.id, direction: r.sender === user.email ? 'outgoing' : 'incoming', state: r.state, person: member(byEmail.get(r.sender === user.email ? r.receiver : r.sender)!) }));
+    result.requests = requests.filter(r => byEmail.has(r.sender === user.email ? r.receiver : r.sender)).map(r => ({ id: r.id, direction: r.sender === user.email ? 'outgoing' : 'incoming', state: r.state, person: member(byEmail.get(r.sender === user.email ? r.receiver : r.sender)!, me) }));
     result.contacts = [...new Map(result.requests.filter(r => r.state === 'accepted').map(r => [r.person.id, r.person])).values()];
     const contacts = new Set(result.contacts.map(p => p.id));
     const messages = (await db.query<{ id: string; sender: string; receiver: string; body: string; created_at: number }>('SELECT * FROM community_messages WHERE sender=$1 OR receiver=$1 ORDER BY created_at DESC LIMIT 200', [user.email])).rows;
@@ -106,11 +107,13 @@ export function createSocialService(db: Database, clock = Date.now) {
       const me = await myProfile(tx, user);
       if (action.kind === 'profile') {
         const p = action.profile;
+        if (p.cohort === 'teen') p.places = p.places.map(place => ['society', 'area'].includes(place.kind) ? { ...place, match: false } : place);
         if (me && me.cohort !== p.cohort) throw new SocialError('Your age group cannot be changed here.');
         const id = me?.public_id ?? crypto.randomUUID().replaceAll('-', '').slice(0, 24);
         await tx.query(`INSERT INTO community_profiles(owner,public_id,display_name,hub,cohort,bio,interests,intent,introvert,discoverable,created_at,updated_at)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11) ON CONFLICT(owner) DO UPDATE SET display_name=$3,hub=$4,bio=$6,interests=$7,intent=$8,introvert=$9,discoverable=$10,updated_at=$11`,
         [user.email, id, p.name, p.hub, p.cohort, p.bio, JSON.stringify(p.interests), p.intent, p.introvert, p.discoverable, now]);
+        await tx.query('UPDATE community_profiles SET places=$1 WHERE owner=$2', [JSON.stringify(p.places), user.email]);
         await tx.query('UPDATE users SET display_name=$1 WHERE id=$2', [p.name, user.id]);
         await tx.query('INSERT INTO records(owner,key,value,created) VALUES($1,$2,$3,$4) ON CONFLICT(owner,key) DO UPDATE SET value=EXCLUDED.value', [user.email, 'profile', JSON.stringify({ ...p, behavior: false }), now]);
         return;
@@ -128,14 +131,22 @@ export function createSocialService(db: Database, clock = Date.now) {
         return;
       }
       if (action.kind === 'read_notifications') { await tx.query('UPDATE social_notifications SET read=true WHERE recipient=$1', [user.id]); return; }
-      if (['request', 'message', 'block'].includes(action.kind) && 'personId' in action) {
+      if (['request', 'message', 'block', 'follow'].includes(action.kind) && 'personId' in action) {
         const target = await targetProfile(tx, me, action.personId);
+        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [[user.email, target.owner].sort().join('|')]);
+        if (await blocked(tx, me.owner, target.owner)) throw new SocialError('This member is unavailable.', 404);
+        if (action.kind === 'follow') {
+          if (action.enabled && !target.discoverable) throw new SocialError('This member is unavailable.', 404);
+          if (action.enabled) await tx.query('INSERT INTO social_follows(actor,target,created_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [user.email, target.owner, now]);
+          else await tx.query('DELETE FROM social_follows WHERE actor=$1 AND target=$2', [user.email, target.owner]);
+          return;
+        }
         if (action.kind === 'block') {
+          await tx.query('DELETE FROM social_follows WHERE (actor=$1 AND target=$2) OR (actor=$2 AND target=$1)', [user.email, target.owner]);
           await tx.query('INSERT INTO community_blocks(actor,target,created_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING', [user.email, target.owner, now]);
           await tx.query("UPDATE connection_requests SET state='cancelled',updated_at=$3 WHERE (sender=$1 AND receiver=$2) OR (sender=$2 AND receiver=$1)", [user.email, target.owner, now]);
           return;
         }
-        await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [[user.email, target.owner].sort().join('|')]);
         const existing = await first<{ id: string; state: string }>(tx, "SELECT id,state FROM connection_requests WHERE ((sender=$1 AND receiver=$2) OR (sender=$2 AND receiver=$1)) AND state IN ('pending','accepted')", [user.email, target.owner]);
         if (action.kind === 'request') {
           if (!target.discoverable) throw new SocialError('This member is unavailable.', 404);

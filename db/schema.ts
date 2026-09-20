@@ -36,6 +36,7 @@ export const communityProfiles = pgTable('community_profiles', {
   displayName: varchar('display_name', { length: 40 }).notNull(),
   hub: varchar('hub', { length: 120 }).notNull(),
   cohort: varchar('cohort', { length: 10, enum: ['teen', 'adult'] }).notNull(),
+  places: jsonb('places').notNull().default([]),
   bio: text('bio').notNull().default(''),
   interests: text('interests').notNull(),
   intent: varchar('intent', { length: 120 }).notNull(),
@@ -96,3 +97,9 @@ export const socialReports = pgTable('social_reports', {
   actor: varchar('actor', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
   reason: varchar('reason', { length: 500 }).notNull(), createdAt: bigint('created_at', { mode: 'number' }).notNull(),
 });
+
+export const socialFollows = pgTable('social_follows', {
+  actor: varchar('actor', { length: 254 }).notNull().references(() => communityProfiles.owner, { onDelete: 'cascade' }),
+  target: varchar('target', { length: 254 }).notNull().references(() => communityProfiles.owner, { onDelete: 'cascade' }),
+  createdAt: bigint('created_at', { mode: 'number' }).notNull(),
+}, t => [primaryKey({ columns: [t.actor, t.target] }), index('social_follows_target_idx').on(t.target)]);

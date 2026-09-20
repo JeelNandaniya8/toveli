@@ -5,8 +5,13 @@ import { places } from './types.ts';
 const id = z.string().uuid();
 const personId = z.string().regex(/^[a-f0-9]{24}$/);
 const photo = z.string().max(350_000).regex(/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/=\r\n]+$/).optional();
+export const placeInput = z.object({
+  kind: z.enum(['area', 'society', 'college', 'workplace']),
+  name: z.string().trim().min(2).max(80), city: z.string().trim().min(2).max(80), match: z.boolean(),
+});
 export const memberInput = z.object({
   name: z.string().trim().min(2).max(40), hub: z.string().refine(v => hubs.includes(v)),
+  places: z.array(placeInput).max(6).default([]),
   cohort: z.enum(['teen', 'adult']), bio: z.string().trim().max(240),
   interests: z.array(z.string().refine(v => interests.includes(v))).min(1).max(10).transform(v => [...new Set(v)]),
   intent: z.string().refine(v => intents.includes(v)), introvert: z.boolean(), discoverable: z.boolean(),
@@ -22,6 +27,7 @@ export const actionInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('react'), id, reaction: z.enum(['like', 'save', 'join']), enabled: z.boolean() }),
   z.object({ kind: z.literal('comment'), id, body: z.string().trim().min(1).max(500) }),
   z.object({ kind: z.literal('delete'), id }),
+  z.object({ kind: z.literal('follow'), personId, enabled: z.boolean() }),
   z.object({ kind: z.literal('request'), personId }),
   z.object({ kind: z.literal('respond'), id, accept: z.boolean() }),
   z.object({ kind: z.literal('cancel_request'), id }),

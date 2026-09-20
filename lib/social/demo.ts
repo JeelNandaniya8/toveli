@@ -21,7 +21,7 @@ export function demoSnapshot(): SocialSnapshot {
     joined: false, likes: 0, members: 0, comments: [], ...extra,
   });
   return {
-    now, me, account: { name: me.name }, people, items: [
+    now, me, following: [people[0].id], followers: [], account: { name: me.name }, people, items: [
       item(1, 'post', people[0], 'The best part of campus is the part you haven’t noticed yet. A few of us are taking the long way home this week. Bring your camera. Or just your curiosity. 🌿', { cover: 'campus', likes: 24, comments: [{ id: crypto.randomUUID(), author: people[3], body: 'Phone camera gang, I’m in 🙋', createdAt: now - 240_000 }] }),
       item(2, 'post', people[1], 'What’s one book you wish you could read again for the first time? Building a little reading list for the weekend. 📚', { topic: 'Books', likes: 12, comments: [] }),
       item(3, 'post', people[4], 'An afternoon with no agenda. Just coffee, a sketchbook, and a few ideas that might become something.', { topic: 'Design', cover: 'coffee', likes: 18, saved: true }),
@@ -49,6 +49,8 @@ export function demoAction(current: SocialSnapshot, raw: unknown): SocialSnapsho
   if (action.kind === 'profile') {
     next.me = { ...me, ...action.profile }; next.account.name = action.profile.name;
     next.items.forEach(i => { if (i.mine) i.author = next.me!; });
+  } else if (action.kind === 'follow') {
+    next.following = action.enabled ? [...new Set([...(next.following ?? []), action.personId])] : (next.following ?? []).filter(id => id !== action.personId);
   } else if (action.kind === 'create') {
     if (action.itemKind !== 'post' && !action.data.title) throw new Error('Add a title first.');
     if (action.itemKind === 'plan' && (!action.data.startsAt || action.data.startsAt < now + 60_000)) throw new Error('Choose a future date and time.');
@@ -69,6 +71,8 @@ export function demoAction(current: SocialSnapshot, raw: unknown): SocialSnapsho
     if (!next.contacts.some(p => p.id === action.personId)) throw new Error('Connect before sending a message.');
     next.messages.push({ id: crypto.randomUUID(), personId: action.personId, body: action.body, fromMe: true, createdAt: now });
   } else if (action.kind === 'block') {
+    next.following = next.following?.filter(id => id !== action.personId);
+    next.followers = next.followers?.filter(id => id !== action.personId);
     next.people = next.people.filter(p => p.id !== action.personId);
     next.contacts = next.contacts.filter(p => p.id !== action.personId);
     next.messages = next.messages.filter(m => m.personId !== action.personId);

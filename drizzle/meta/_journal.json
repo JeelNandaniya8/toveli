@@ -15,6 +15,13 @@
       "when": 1788930623009,
       "tag": "0001_round_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789924774062,
+      "tag": "0002_eminent_nehzno",
+      "breakpoints": true
     }
   ]
 }
